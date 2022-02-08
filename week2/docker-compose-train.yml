@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  train:
+    build:
+      context: .
+      dockerfile: Dockerfile.train
+    volumes:
+      - ./data:/app/data
+      - ./db:/app/db
+      - ./mlflow_artifacts:/app/mlflow_artifacts
+    depends_on:
+      - mlflow_server
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow_server:2137
+
+  mlflow_server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    expose:
+      - "2137"
+    ports:
+      - "2137:2137"
+    volumes:
+      - ./db:/db

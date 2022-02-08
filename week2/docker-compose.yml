@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./db:/app/db
+      - ./mlflow_artifacts:/app/mlflow_artifacts
+    depends_on:
+      - mlflow_server
+
+  mlflow_server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    expose:
+      - "2137"
+    ports:
+      - "2137:2137"
+    volumes:
+      - ./db:/db
+
