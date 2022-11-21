@@ -7,10 +7,11 @@ from fastapi import Depends, FastAPI
 from mlflow.tracking import MlflowClient
 from sklearn.ensemble import RandomForestClassifier
 from starlette.responses import RedirectResponse
-
+import os
 from prediction_data import PredictionData
 
-MLFLOW_TRACKING_URI = "http://localhost:2137"
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", default="http://localhost:2137")
+
 
 @lru_cache
 def load_mlflow_client():

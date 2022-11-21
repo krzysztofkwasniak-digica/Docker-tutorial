@@ -1,4 +1,5 @@
 import tempfile
+import os
 from pathlib import Path
 from typing import Final, Union
 
@@ -10,9 +11,10 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import StratifiedKFold
 
 from logger import logger
+os.environ["GIT_PYTHON_REFRESH"] = "quiet"
 
-DATASET_PATH: Final = Path("data/healthcare-dataset-stroke-data.csv")
-MLFLOW_TRACKING_URI = "http://localhost:2137"
+DATASET_PATH: Final = Path("../data/healthcare-dataset-stroke-data.csv")
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", default="http://localhost:2137")
 
 
 class Objective:

@@ -8,3 +8,4 @@ models/
 mlflow_artifacts/
 mlruns/
 Week2.egg-info
+assets/

@@ -1,7 +1,11 @@
 # Week 2
 This week we will be having a closer look into connecting several docker containers.
 We will setup an MLflow server to store the information about training experiments as well as as a SQLite database to store the models.
-### Setup
+## Setup
+
+#### Install Docker Compose
+Follow the [link](https://docs.docker.com/compose/install/) to install Docker Compose for your platform OS.
+#### SQLite
 ```sh
 cd week2/
 ```
@@ -9,288 +13,247 @@ Create the database. Use the script located in [db/create.py](db/create.py). It 
 ```python3
 python db/create.py
 ```
+
 ---
 ## Second task
+This week we will be dealing with three separate tasks. We want to:
+- Run some training experiments
+- Track their results and save the best model
+- Serve the model to the public
 
+Feel free to browse the code for this week.
+
+### Launching MLflow
+MLflow is an open source platform for the machine learning lifecycle. We will be using it to track our experiments and save trained models to the model registry. It can easily be hosted on your own machine. More on MLflow [here](https://www.mlflow.org/).
+
+Let's launch the server!
+Execute the following commands in your terminal.
 ```sh
 docker build -t server:latest -f server/Dockerfile .
 docker run -d -v "$(pwd)"/db:/db -p 2137:2137 server:latest
 ```
+You should now be able to access http://localhost:2137.
+The page will look more or less like this:
+![](assets/mlflow_ui.png)
 
+
+
+
+Great! So far so good. Let's get on with the next steps.
+### Training
+We now want to connect to our tracking application at http://localhost:2137. Let's see how this is implemented in the code.
+```python
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", default="http://localhost:2137")
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+```
+
+`os.environ.get()` will look for a specific environment variable in your system (in this case MLFLOW_TRACKING_URI). If the variable is not found, then the default value is supplied (http://localhost:2137). Just like python's `dict.get()`
+
+We only need to tell mlflow to set the tracking URI to that of our hosted server, neat!
+Let's train then!
+Execute the following commands in your terminal.
 ```sh
-docker run -d -p 8888:8888 -v "$(pwd)"/db:/app/db -v "$(pwd)"/mlflow_artifacts:/app/mlflow_artifacts app:latest
-docker build -t app:latest -f Dockerfile.app .
+docker build -t train:latest -f train/Dockerfile .
+docker run -v "$(pwd)"/db:/app/db -v "$(pwd)"/mlflow_artifacts:/app/mlflow_artifacts -v "$(pwd)"/data:/data train:latest
 ```
-
+Well, we get an error:
 ```sh
-docker build -t train:latest -f Dockerfile.train .
-docker run -v "$(pwd)"/db:/app/db -v "$(pwd)"/mlflow_artifacts:/app/mlflow_artifacts -v "$(pwd)"/data:/app/data train:latest
+[11/21/22 19:35:59] WARNING  urllib3.connectionpool:       connectionpool.py:812
+                             connectionpool.py:812 -
+                             Retrying (Retry(total=4,
+                             connect=4, read=5,
+                             redirect=5, status=5)) after
+                             connection broken by
+                             'NewConnectionError('<urllib3
+                             .connection.HTTPConnection
+                             object at 0x7f7af44d42b0>:
+                             Failed to establish a new
+                             connection: [Errno 111]
+                             Connection refused')':
+                             /api/2.0/mlflow/experiments/c
+                             reate
 ```
-
+Let's debug then, perhaps something is wrong with the Dockerfile or the training script?
+The script should also work outside the container, so let's check that.
+Change the directory to train and create a virtual environment.
 ```sh
-docker-compose -f docker-compose-train.yml up --remove-orphans
+cd train/
+python -m venv env
 ```
+Activate it
+- Linux/MacOS:
 ```sh
-chmod -R 777
+source ./env/bin/activate
 ```
-
-
-The training script is ready. The question is how to dockerize it?
-<details>
-    <summary>What does "dockerize" mean?</summary>
-
-> Dockerizing is the process of packing, deploying, and running applications  using Docker containers
-> -- <cite> [https://developerexperience.io/practices/dockerizing](https://developerexperience.io/practices/dockerizing) </cite>
-</details>
-
-Lets view the contents of **`Dockerfile.train`**.
-
-```dockerfile
-FROM python:3.9-slim-buster
-
-LABEL AUTHOR=krzysztof.kwasniak@digica.com
-
-WORKDIR /app/
-
-COPY requirements.txt requirements.txt
-COPY setup.py setup.py
-RUN python -m pip install --upgrade pip && \
-    python -m pip install -r requirements.txt && \
-    python -m pip install -e .
-
-COPY src/logger.py src/logger.py
-COPY src/train.py src/train.py
-
-ENTRYPOINT ["python", "src/train.py"]
+- Windows:
+```sh
+.\env\Scripts\activate
 ```
-
-There are a few things that require explanation. Let's quickly go through them.
-
-#### FROM
-```dockerfile
-FROM python:3.9-slim-buster
+Install the dependencies:
+```sh
+pip install --upgrade wheel
+pip install -r requirements.txt
 ```
-Here, we specify the base image that we will use as a foundation. It is important to note, that the image does not have to exist locally. Docker will first search for it locally, but if the image does not exist, it will be pulled from the [Dockerhub repository](https://hub.docker.com/).
-But why did I choose `python:3.9-slim-buster` as a base image? That is actually a valid question. The base image should satisfy all our needs, while consuming the least amount of memory.
-[How should I pick the right Docker image?](https://stackoverflow.com/questions/57918880/how-should-i-pick-the-right-docker-image)
-Any base image from the `ubuntu` repository would also be sufficient, however I would have to install python manually.
-> <cite>[https://docs.docker.com/engine/reference/builder/#from](https://docs.docker.com/engine/reference/builder/#from)</cite>
-<details>
-    <summary>How would a ubuntu:20.04 base image look like?</summary>
-
-```dockerfile
-FROM ubuntu20:04
-RUN apt-get update && apt-get install -y \
-    python3.9-dev python3-pip
+Run the training script:
+```sh
+python train.py
 ```
-
-</details>
-
-#### WORKDIR
-```dockerfile
-WORKDIR /app/
-```
-> The `WORKDIR` instruction sets the working directory for any `RUN`, `CMD`, `ENTRYPOINT`, `COPY` and `ADD` instructions that follow it in the Dockerfile. If the `WORKDIR` doesn’t exist, it will be created even if it’s not used in any subsequent `Dockerfile` instruction.
-> <cite>[https://docs.docker.com/engine/reference/builder/#workdir](https://docs.docker.com/engine/reference/builder/#workdir)</cite>
-
-#### COPY
-```dockerfile
-COPY requirements.txt requirements.txt
-COPY setup.py setup.py
-COPY src/logger.py src/logger.py
-COPY src/train.py src/train.py
-```
-Here, we copy all the files that our container will need.
-> The `COPY` instruction copies new files or directories from <src> and adds them to the filesystem of the container at the path <dest>.
-<cite>[https://docs.docker.com/engine/reference/builder/#copy](https://docs.docker.com/engine/reference/builder/#copy)</cite>
-
-#### RUN
-```dockerfile
-RUN python -m pip install --upgrade pip && \
-    python -m pip install -r requirements.txt && \
-    python -m pip install -e .
-```
-We specify the commands that should be executed in the shell.
-It is important to note, that these commands are written in a single `RUN`. The reason for that is because each `RUN` statement will create a new layer. This is crucial in building larger images.
-[Multiple RUN vs. single chained RUN in Dockerfile, which is better?](https://stackoverflow.com/questions/39223249/multiple-run-vs-single-chained-run-in-dockerfile-which-is-better)
->The `RUN` instruction will execute any commands in a new layer on top of the current image and commit the results. The resulting committed image will be used for the next step in the Dockerfile.
-<cite>[https://docs.docker.com/engine/reference/builder/#run](https://docs.docker.com/engine/reference/builder/#run)</cite>
-
-#### ENTRYPOINT
-Here we define what docker will execute when running the image.
-```dockerfile
-ENTRYPOINT ["python", "src/train.py"]
-```
-> An `ENTRYPOINT` allows you to configure a container that will run as an executable.
-<cite>[https://docs.docker.com/engine/reference/builder/#entrypoint](https://docs.docker.com/engine/reference/builder/#entrypoint)</cite>
-
-
-### Building the image
-Execute the command in your terminal to [build](https://docs.docker.com/engine/reference/commandline/build/) the base image.
+Output should be similar:
 ```bash
-docker build .
+(env) ~/Docker-tutorial/week2/train$ python train.py
+[I 2022-11-21 19:50:44,329] A new study created in memory with name: no-name-15995f33-ba08-4d7f-88bd-655bfa71aa46
+[I 2022-11-21 19:50:55,513] Trial 0 finished with value: 0.9468766359515651 and parameters: {'max_depth': 24, 'n_estimators': 854}. Best is trial 0 with value: 0.9468766359515651.
+[I 2022-11-21 19:51:03,199] Trial 1 finished with value: 0.9477525483603243 and parameters: {'max_depth': 14, 'n_estimators': 584}. Best is trial 1 with value: 0.9477525483603243.
+[I 2022-11-21 19:51:10,932] Trial 2 finished with value: 0.9468766359515651 and parameters: {'max_depth': 24, 'n_estimators': 718}. Best is trial 1 with value: 0.9477525483603243.
+[I 2022-11-21 19:51:15,799] Trial 3 finished with value: 0.9468766359515651 and parameters: {'max_depth': 23, 'n_estimators': 453}. Best is trial 1 with value: 0.9477525483603243.
+[I 2022-11-21 19:51:25,127] Trial 4 finished with value: 0.947168606754485 and parameters: {'max_depth': 15, 'n_estimators': 869}. Best is trial 1 with value: 0.9477525483603243.
+[I 2022-11-21 19:51:28,037] Trial 5 finished with value: 0.9474605775574046 and parameters: {'max_depth': 5, 'n_estimators': 276}. Best is trial 1 with value: 0.9477525483603243.
+[I 2022-11-21 19:51:34,208] Trial 6 finished with value: 0.9465846651486455 and parameters: {'max_depth': 39, 'n_estimators': 577}. Best is trial 1 with value: 0.9477525483603243.
+[I 2022-11-21 19:51:43,138] Trial 7 finished with value: 0.9465846651486455 and parameters: {'max_depth': 25, 'n_estimators': 837}. Best is trial 1 with value: 0.9477525483603243.
+[I 2022-11-21 19:51:45,666] Trial 8 finished with value: 0.9465846651486455 and parameters: {'max_depth': 18, 'n_estimators': 232}. Best is trial 1 with value: 0.9477525483603243.
+[I 2022-11-21 19:51:51,687] Trial 9 finished with value: 0.9468766359515651 and parameters: {'max_depth': 19, 'n_estimators': 563}. Best is trial 1 with value: 0.9477525483603243.
+Successfully registered model 'StrokePredictor'.
+2022/11/21 19:51:54 INFO mlflow.tracking._model_registry.client: Waiting up to 300 seconds for model version to finish creation.                     Model name: StrokePredictor, version 1
+Created version '1' of model 'StrokePredictor'.
+[11/21/22 19:51:54] INFO     docker_tutorial: train.py:113 - Best trial params:                                                                                                                                                                          train.py:113
+                    INFO     docker_tutorial: train.py:115 - max_depth: 14                                                                                                                                                                               train.py:115
+                    INFO     docker_tutorial: train.py:115 - n_estimators: 584                                                                                                                                                                           train.py:115
 ```
-> ~/Docker-tutorial/week1$ docker build .
-unable to prepare context: unable to evaluate symlinks in Dockerfile path: lstat /home/kkwasniak/Docker-tutorial/week1/Dockerfile: no such file or directory
+It works?
+![](https://sweatpantsandcoffee.com/wp-content/uploads/2017/10/940x450-Ryan-Reynold-Reaction-GIFs.jpg)
 
-Oops, looks like it didn't work. Let's examine why.
-By default, Docker looks for a `Dockerfile` in the specified context (the `"."` in `docker build .` refers to the current directory `~/Docker-tutorial/week1`). We have two `Dockerfiles`.
-- **`Dockerfile.train`**
-- **`Dockerfile.app`**
-
-So, to build the image, we must specify the path to the correct `Dockerfile`!
-We can do that by passing the `-f` option to the `build` command.
-> -f, --file string             Name of the Dockerfile (Default is 'PATH/Dockerfile')
-
-Let's try.
+Lets try to understand the situation.
+The server container exposes port 2137 to the public. How can we check it?
+Find your container and [inspect](https://docs.docker.com/engine/reference/commandline/inspect/) it.
 ```sh
-docker build -f Dockerfile.train .
+docker ps
+docker inspect YOUR_SERVER_CONTAINER_ID
 ```
-If everything went well you should see a similar output:
-> Successfully built 4f7f85ad2bc5
-
-Congratulations! You have built the training image! Let's see it on the docker image list.
+The output is quite verbose and since we are only interested in the network section we can filter the output.
 ```sh
-docker images
+docker inspect --format='{{json .NetworkSettings.Networks}}' YOUR_SERVER_CONTAINER_ID
+docker inspect --format='{{json .NetworkSettings.Ports}}' YOUR_SERVER_CONTAINER_ID
 ```
-> ~/Docker-tutorial/week1$ docker images
-REPOSITORY   TAG                  IMAGE ID       CREATED         SIZE
-<none>       <none>               4f7f85ad2bc5   4 minutes ago   658MB
-
-The image is built. But how do I remember the `IMAGE ID`? There must be a better way to version the images, right? Correct! Usually, when building an image you pass a tag to distinguish it from the rest of the images you have built. How do we do that? By passing another option `-t` to the `build` command.
-> -t, --tag list                Name and optionally a tag in the 'name:tag' format
-
-See for yourself.
-```sh
-docker build -t train:latest -f Dockerfile.train .
-docker images
-```
-> ~/Docker-tutorial/week1$ docker images
-REPOSITORY   TAG                  IMAGE ID       CREATED         SIZE
-train        latest               4f7f85ad2bc5   9 minutes ago   658MB
-
-Docker recognizes that the image we are trying to build is the same as the image we have built before, just with a tag so it just tags the existing image. It is equal to running
-```sh
-docker tag 4f7f85ad2bc5 train:latest
-```
-
-Everything is now built!
-
-### Running the image
-
-Thanks to the tagging we can now refer to our image by the repository:tag. Let's run it.
-
-```sh
-docker run train:latest
-```
-
-But once again, we run into an error.
-> FileNotFoundError: [Errno 2] No such file or directory:
-'data/healthcare-dataset-stroke-data.csv'
-
-Looks like we forgot to add `COPY data data` to the `Dockerfile.train`, right?
-![](https://i.kym-cdn.com/entries/icons/original/000/028/596/dsmGaKWMeHXe9QuJtq_ys30PNfTGnMsRuHuo_MUzGCg.jpg)
-
-Copying the data into the image is a bad practice. A container can be stopped, destroyed or replaced. This should be done without any impact or loss of data. But our training script requires the data to be inside the container. How to inject it? By using [volumes](https://docs.docker.com/storage/volumes/).
-Lets mount the **`data`** directory from the host to the container.
-```sh
-docker run -v "$(pwd)"/data:/app/data train:latest
-```
->~Docker-tutorial/week1 docker run -v "$(pwd)"/data:/app/data train:latest
-[01/30/22 14:29:28] INFO     train:__main__: 46 - Accuracy: 0.9406614785992218         train.py:46
-                    INFO     train:__main__: 51 - Model successfully saved to models/model.joblib train.py:51
-
-But if we look inside the **`models`** directory, we will only find **`.gitkeep`**.
-```sh
-ls models/ -a
-```
-That is because we didn't mount the model directory to the container. The model was saved inside the container. Fix it by mounting the model directory.
-```sh
-docker run -v "$(pwd)"/data:/app/data -v "$(pwd)"/models:/app/models train:latest
-```
-You might run into a permission issue.
->PermissionError: [Errno 13] Permission denied: 'models/model.joblib'
-
-Fix it by adding all permission to the folder and running the command again.
-```sh
-chmod 777 models/
-docker run -v "$(pwd)"/data:/app/data -v "$(pwd)"/models:/app/models train:latest
-```
-
-If you don't want to see the output add a `-d` option to the `run` command. It will not occupy your terminal. This is useful for scripts with very long output.
-```sh
-docker run -d -v "$(pwd)"/data:/app/data -v "$(pwd)"/models:/app/models train:latest
-```
-> ~/Docker-tutorial/week1 docker run -d -v "\$(pwd)"/data:/app/data -v "\$(pwd)"/models:/app/models train:latest
-7bf21868cfea2cd49c306b144e1197ed52b479e3759676a04aebc23f943e2a8f
-
-To see if everything went ok check the logs.
-```sh
-docker logs 7bf21868cfea2cd49c306b144e1197ed52b479e3759676a04aebc23f943e2a8f
-```
-
-If you lose the ID, you can check it with
+The container is connected to a network called `bridge`. All containers without a --network specified, are attached to the default bridge network. You can check it on the stopped training container.
 ```sh
 docker ps -a
+docker inspect --format='{{json .NetworkSettings.Networks}}' YOUR_TRAIN_CONTAINER_ID
 ```
-Which will show you all containers. You can then copy the `CONTAINER ID`.
+The training container however runs in isolation from the host and does not expose any ports. It can communicate with other containers in the same network by referencing their IP address. Let's try.
+To get the IP address of your server container get it's IP
+```sh
+docker inspect YOUR_SERVER_CONTAINER_ID | grep IPAddress
+```
+Passing the IP via an environment variable is possible because of the following line:
+```python
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", default="http://localhost:2137")
+```
+We can pass it to the container run command
+```
+cd ~/Docker-tutorial/week2
+docker run -v "$(pwd)"/db:/app/db -v "$(pwd)"/mlflow_artifacts:/app/mlflow_artifacts -v "$(pwd)"/data:/data -e MLFLOW_TRACKING_URI=http://YOUR_SERVER_CONTAINER_IP:2137 train:latest
+```
+Success! But his is getting quite tedious. What if you had to connect three or more containers?
+
+Here are some questions for you to answer:
+- What if the container's IP changes?
+- Can this be done in any other way, perhaps simpler?
+- What are the advantages and disadvantages of connecting to the default `bridge` network?
+
+Networking in Docker is quite complex. I encourage you to read more about it.
+
+Let's explore simpler options, particularly [Docker Compose](https://docs.docker.com/compose/).
+The compose file uses a yaml syntax to configure services. It is very easy to switch from regular Docker CLI Docker Compose as the syntax is very much the same or similar. You can read more on the compose specification [here](https://docs.docker.com/compose/compose-file/)
+All services within the compose file unless explicitly defined otherwise, share the same network. You need not know the IP address of a service's container. You can simply reference it using the service name.
+Take a look at [docker-compose.train.yml](docker-compose.train.yml).
+```Dockerfile
+version: "3.8"
+
+services:
+  train:
+    image: train:latest
+    build:
+      context: .
+      dockerfile: train/Dockerfile
+    volumes:
+      - ./data:/data
+      - ./db:/app/db
+      - ./mlflow_artifacts:/app/mlflow_artifacts
+    depends_on:
+      - mlflow_server
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow_server:2137
+
+  mlflow_server:
+    image: server:latest
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - "2137:2137"
+    volumes:
+      - ./db:/db
+```
+This simple file defines pretty much everything that we have accomplished earlier. It provides instruction how to build and tag the images for each service, volumes and environment variables for the containers. You can now stop your server container.
+To build and run the training and the server container simply run
+```sh
+docker-compose -f docker-compose.train.yml build
+docker-compose -f docker-compose.train.yml up
+```
+or to combine both commands
+```sh
+docker-compose -f docker-compose.train.yml up --build
+```
+If you removed or renamed a service in your compose file, you can run this command with the --remove-orphans flag to clean it up.
+```sh
+docker-compose -f docker-compose.train.yml up --build --remove-orphans
+```
+
+
+### Serving
+
+With our current knowledge building and launching the serving container is a matter of seconds.
+```sh
+docker-compose -f docker-compose.yml up --build --remove-orphans
+```
+You can also launch it in detached mode and inspect the logs. Most of the commands for compose are similar.
+```sh
+docker-compose -f docker-compose.yml up -d --build --remove-orphans
+docker-compose -f docker-compose.yml logs
+```
+
+Play with your model endpoint and MLflow server. You have done it!
+
+A question for you:
+- The current implementation is juggling the `model_server` service. It is used in both `docker-compose.train.yml` and `docker-compose.yml` and being overriden. Can you think of a better way to share it between those two files?
+Tip: https://docs.docker.com/compose/extends/
+---
+
+## <center>HOMEWORK </center>
+1. Answer the questions in **Train** and **Serve** section.
+2. Take a look at [server/Dockerfile](server/Dockerfile). Particularly how PORT and DB_DEST ARGs are handled and passed to [server/run_mlflow_server.sh](server/run_mlflow_server.sh). They can be passed with `docker build --build-arg ARG=ARG_VALUE`. What are the advantages and disadvantages of supplying arguments like that? Is it the most efficient way to implement it for this particular case?
+3. Find a project that you think would benefit from using Docker. Dockerize it and write a simple documentation (e.g. how to build and run -> 2 commands). This can be any project - pet project, university assignment, random github repo or your own work project.
+
+Good luck!
+
+### <center> Congratulations! </center>
+### You have completed the tutorial. You are more than ready to dive deep into the world of containers.
 
 ---
 
-## <center>HOMEWORK</center>
-The file **`src/app.py`** contains the code needed to run a simple FastAPI application to serve the previously trained model.
-Your homework is to fill in the missing code in the **`Dockerfile.app`** and build the image. Think of the following things:
-- Which base image should be chosen for this app?
-- What files do you need to copy?
-- What dependencies does the **`src/app.py`** have?
-- What are the shell commands that you need to run?
-- How to specify the entrypoint? Refer to the `start_api.sh`.
+#### Additional read
 
-Once you do it:
-- Run the container in an interactive mode (`-it`). Play with the application in your browser (Try it out in the top left corner and execute with the example params).
-    ```sh
-    docker run -it -v "$(pwd)"/models:/app/models -p 8888:8888 app:latest
-    ```
-    [https://www.whitesourcesoftware.com/free-developer-tools/blog/docker-expose-port/](https://www.whitesourcesoftware.com/free-developer-tools/blog/docker-expose-port/)
+https://docs.docker.com/compose/extends/
 
+https://www.tutorialworks.com/container-networking/
 
-- Run the container in a detached mode. Check if the container started. Attach into the running container. Play with the application in your browser.
-    ```sh
-    docker run -d -v "$(pwd)"/models:/app/models -p 8888:8888 app:latest
-    docker ps
-    docker attach "YOUR CONTAINER ID"
-    ```
-- Run the container in a detached mode. Enter into it. Look at the folder structure.
-    ```sh
-    docker run -d -v "$(pwd)"/models:/app/models -p 8888:8888 app:latest
-    docker exec -it "YOUR CONTAINER ID" bash
-    ls
-    ```
-- Run the container in a detached mode and then stop it.
-    ```sh
-    docker run -d -v "$(pwd)"/models:/app/models -p 8888:8888 app:latest
-    docker stop "YOUR CONTAINER ID"
-    ```
-- Override the containers entrypoint. Start the application manually.
-    ```sh
-    docker run --entrypoint bash -it -v "$(pwd)"/models:/app/models -p 8888:8888 app:latest
-    uvicorn app:app --reload --app-dir=src --host "0.0.0.0" --port 8888
-    ```
+https://stackoverflow.com/questions/38907708/docker-ipc-host-and-security
 
-## <center>That's it for week 1!</center>
+https://releasehub.com/blog/6-docker-compose-best-practices-for-dev-and-prod
 
-------
-### Additional read
-https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
-https://docs.docker.com/develop/dev-best-practices/
-https://sysdig.com/blog/dockerfile-best-practices/
-https://testdriven.io/blog/docker-best-practices/
-https://docs.docker.com/engine/reference/run/
-https://docs.docker.com/engine/reference/commandline/build/
-https://phoenixnap.com/kb/docker-cmd-vs-entrypoint
-https://blog.logrocket.com/docker-volumes-vs-bind-mounts/
-https://github.com/wsargent/docker-cheat-sheet/blob/master/README.md#best-practices
+https://docs.docker.com/network/network-tutorial-standalone/
 
+https://github.com/docker/awesome-compose
 
 
 

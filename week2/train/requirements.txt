@@ -5,3 +5,4 @@ rich==12.6.0
 mlflow==2.0.1
 plotly==5.11.0
 kaleido==0.2.1
+scipy<1.9.0,>=1.7.0
