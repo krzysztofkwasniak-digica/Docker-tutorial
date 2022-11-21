@@ -5,7 +5,7 @@
 - What is an image?
 - What is a container?
 - What is a dockerfile?
-- [What is Docker in 5 minutes](https://www.youtube.com/watch?v=_dfLOzuIg2o&t=200s)
+- [What is Docker in 5 minutes](https://www.youtube.com/watch?v=_dfLOzuIg2o)
 - [Why Use Docker](https://www.youtube.com/watch?v=SYozbyvsP8A)
 * **Docker**
 
