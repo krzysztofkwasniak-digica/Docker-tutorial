@@ -1,5 +1,7 @@
+DB_DEST=${1:-db/store.db}
+PORT=${2:-2137}
 mlflow server \
     --default-artifact-root mlflow_artifacts \
-    --backend-store-uri sqlite:///db/store.db \
+    --backend-store-uri sqlite:///$DB_DEST \
     --host 0.0.0.0 \
-    --port 2137
+    --port $PORT
