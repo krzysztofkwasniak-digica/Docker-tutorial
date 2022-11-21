@@ -7,20 +7,22 @@ from fastapi import Depends, FastAPI
 from mlflow.tracking import MlflowClient
 from sklearn.ensemble import RandomForestClassifier
 from starlette.responses import RedirectResponse
+import os
+from prediction_data import PredictionData
 
-from src.prediction_data import PredictionData
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", default="http://localhost:2137")
 
 
 @lru_cache
 def load_mlflow_client():
-    mlflow.set_tracking_uri("sqlite:///db/store.db")
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     client: MlflowClient = MlflowClient()
     return client
 
 
 @lru_cache
 def load_model(client: MlflowClient = Depends(load_mlflow_client)) -> RandomForestClassifier:
-    model_source: str = client.get_latest_versions(name="RandomForestRegression")[-1].source
+    model_source: str = client.get_latest_versions(name="StrokePredictor")[-1].source
     model: RandomForestClassifier = mlflow.pyfunc.load_model(model_source)
     return model
 

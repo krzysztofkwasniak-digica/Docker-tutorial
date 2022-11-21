@@ -314,14 +314,23 @@ Once you do it:
 
 ------
 ### Additional read
+
 https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
+
 https://docs.docker.com/develop/dev-best-practices/
+
 https://sysdig.com/blog/dockerfile-best-practices/
+
 https://testdriven.io/blog/docker-best-practices/
+
 https://docs.docker.com/engine/reference/run/
+
 https://docs.docker.com/engine/reference/commandline/build/
+
 https://phoenixnap.com/kb/docker-cmd-vs-entrypoint
+
 https://blog.logrocket.com/docker-volumes-vs-bind-mounts/
+
 https://github.com/wsargent/docker-cheat-sheet/blob/master/README.md#best-practices
 
 

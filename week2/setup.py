@@ -5,7 +5,7 @@ from setuptools import find_packages, setup
 if __name__ == "__main__":
     setup(
         name="Week2",
-        version="0.0.0",
+        version="0.1.0",
         author="Krzysztof Kwaśniak",
         author_email="krzysztof.kwasniak@digica.com",
         url="https://github.com/krzysztofkwasniak-digica/Docker-tutorial",
