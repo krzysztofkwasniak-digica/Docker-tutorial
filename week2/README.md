@@ -5,9 +5,9 @@ We will setup an MLflow server to store the information about training experimen
 ```sh
 cd week2/
 ```
-#### Create the database
-```sh
-sqlite3 mlflow_db.db
+Create the database. Use the script located in [db/create.py](db/create.py). It will by default create a database at `db/store.db`. It is possible to change the name of the resulting database, however it is strongly advised to keep the defaults.
+```python3
+python db/create.py
 ```
 ---
 ## Second task
