@@ -13,8 +13,8 @@ python db/create.py
 ## Second task
 
 ```sh
-docker build -t server:latest -f Dockerfile.server .
-docker run -d -v "$(pwd)"/db:/db -p 2138:2137 server:latest
+docker build -t server:latest -f server/Dockerfile .
+docker run -d -v "$(pwd)"/db:/db -p 2137:2137 server:latest
 ```
 
 ```sh

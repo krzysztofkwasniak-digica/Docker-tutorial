@@ -1,11 +1,19 @@
 FROM python:3.9-slim-buster
 
-COPY requirements_mlflow_server.txt requirements.txt
+ARG PORT=2137
+ARG DB_DEST=db/store.db
+
+ENV PORT=$PORT
+ENV DB_DEST=$DB_DEST
+
+COPY server/requirements.txt requirements.txt
 
 RUN python -m pip install -r requirements.txt
 
-COPY run_mlflow_server.sh run_mlflow_server.sh
+COPY server/run_mlflow_server.sh run_mlflow_server.sh
 
-EXPOSE 8888
+EXPOSE $PORT
 
-ENTRYPOINT ["bash", "./run_mlflow_server.sh"]
+CMD [ "bash" ]
+
+ENTRYPOINT [ "sh", "-c", "./run_mlflow_server.sh $DB_DEST $PORT" ]

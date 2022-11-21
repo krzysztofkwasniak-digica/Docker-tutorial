@@ -1,21 +1,22 @@
+import tempfile
 from pathlib import Path
 from typing import Final, Union
-import logging
+
 import mlflow
 import numpy as np
 import optuna
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import StratifiedKFold
-from mlflow.exceptions import MlflowException
-from mlflow.tracking import MlflowClient
-from src.logger import Logger
-import os
+
+from logger import logger
+
 DATASET_PATH: Final = Path("data/healthcare-dataset-stroke-data.csv")
+MLFLOW_TRACKING_URI = "http://localhost:2137"
 
 
 class Objective:
-    def __init__(self, X: pd.DataFrame, y: pd.DataFrame):
+    def __init__(self, X: pd.DataFrame, y: pd.Series):
         self.X = X
         self.y = y
         self.best_acc: float = 0.0
@@ -57,7 +58,7 @@ def load_data(data_path: Union[str, Path]) -> pd.DataFrame:
     return pd.read_csv(data_path)
 
 
-def preprocess_data(raw_data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def preprocess_data(raw_data: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
     data_no_idx: pd.DataFrame = raw_data.drop(columns=["id"])  # Drop Id column as it holds no useful information
     data_drop_unknown: pd.DataFrame = data_no_idx[data_no_idx["smoking_status"] != "Unknown"]
     data_no_na: pd.DataFrame = data_drop_unknown[data_drop_unknown["bmi"] != "N/A"].dropna()
@@ -73,19 +74,18 @@ def preprocess_data(raw_data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]
         }
     )
     X: pd.DataFrame = data_dummy.drop(columns=["stroke"])
-    y: pd.DataFrame = data_dummy["stroke"]
+    y: pd.Series = data_dummy["stroke"]
     return X, y
 
 
 def main() -> None:
-    logger = Logger(__name__, log_level=logging.INFO)
     raw_data: pd.DataFrame = load_data(DATASET_PATH)
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
-    mlflow.set_tracking_uri(os.environ["MLFLOW_TRACKING_URI"])
     try:
         mlflow.create_experiment(name="Docker experiment")
-    except mlflow.exceptions.RestException as e:
-        logger.log.warning("Experiment already exists")
+    except mlflow.exceptions.RestException:
+        logger.info("Experiment already exists")
     mlflow.set_experiment(experiment_name="Docker experiment")
 
     X, y = preprocess_data(raw_data)
@@ -93,35 +93,25 @@ def main() -> None:
     study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=10)
 
-    with mlflow.start_run(run_name="Final Results") as final_run:
-        run_id: str = final_run.info.run_id
-        model_registry_name: Final = "RandomForestClassifier"
+    with mlflow.start_run(run_name="Final Results") as final_run, tempfile.TemporaryDirectory() as tmpdir:
         df = study.trials_dataframe()
-        Path("temp").mkdir(exist_ok=True)
-        df.to_csv("temp/results.csv")
+        temp = Path(tmpdir)
+        df.to_csv(temp / "results.csv")
         trial = study.best_trial
         fig = optuna.visualization.plot_optimization_history(study)
-        fig.write_image("temp/optimization_history.png")
-        mlflow.log_artifact("temp/optimization_history.png")
-        mlflow.log_artifact("temp/results.csv")
+        fig.write_image(temp / "optimization_history.png")
+        mlflow.log_artifact(temp / "optimization_history.png")
+        mlflow.log_artifact(temp / "results.csv")
 
         mlflow.log_param("Best Accuracy", trial.value)
         mlflow.log_params(trial.params)
 
-        mlflow.sklearn.log_model(objective.best_model, "best_model")
-        logger.log.info("Best trial params: ")
+        mlflow.sklearn.log_model(sk_model=objective.best_model,
+                                 artifact_path="sklearn_model",
+                                 registered_model_name="StrokePredictor")
+        logger.info("Best trial params: ")
         for key, value in trial.params.items():
-            logger.log.info(f"{key}: {value}")
-
-        client = MlflowClient()
-        try:
-            client.create_registered_model(model_registry_name)
-        except MlflowException:
-            print("Model already registered")
-
-        model_uri = "runs:/{}/best_model".format(run_id)
-        client.create_model_version(model_registry_name, model_uri, run_id)
-
+            logger.info(f"{key}: {value}")
 
 if __name__ == "__main__":
     main()
