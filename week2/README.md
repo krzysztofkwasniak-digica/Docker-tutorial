@@ -142,7 +142,7 @@ docker inspect --format='{{json .NetworkSettings.Networks}}' YOUR_TRAIN_CONTAINE
 The training container however runs in isolation from the host and does not expose any ports. It can communicate with other containers in the same network by referencing their IP address. Let's try.
 To get the IP address of your server container get it's IP
 ```sh
-docker inspect YOUR_SERVER_CONTAINER_ID | grep IPAddress
+docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' YOUR_SERVER_CONTAINER_ID
 ```
 Passing the IP via an environment variable is possible because of the following line:
 ```python
