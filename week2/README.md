@@ -32,6 +32,35 @@ Execute the following commands in your terminal.
 docker build -t server:latest -f server/Dockerfile .
 docker run -d -v "$(pwd)"/db:/db -p 2137:2137 server:latest
 ```
+
+<details>
+  <summary><b>How to fix "Got unexpected extra argument" error </b></summary>
+
+If you are using Windows you might encounter the following error when running this command:
+```sh
+docker run -v ${PWD}/db:/db -p 2137:2137 server:latest
+rror: Got unexpected extra argument (
+./run_mlflow_server.sh: 4: ./run_mlflow_server.sh: --default-artifact-root: not found
+./run_mlflow_server.sh: 5: ./run_mlflow_server.sh: --backend-store-uri: not found
+./run_mlflow_server.sh: 6: ./run_mlflow_server.sh: --host: not found
+./run_mlflow_server.sh: 7: ./run_mlflow_server.sh: --port: not found
+```
+The cause of the problem is related to how Docker handles line endings differently in Windows and any Linux/macOS system.
+To fix it, change your end of line sequence. Below is an example of how to accomplish that in VS Code.
+
+1. Open Command Palette (View -> Open Command Palette) or press `Ctrl+Shift+P`.
+
+2. Type `Change End of Line Sequence` and press it.
+
+3. Change it from `CLRF` to `LF`.
+
+You can read more about it here:
+https://www.aleksandrhovhannisyan.com/blog/crlf-vs-lf-normalizing-line-endings-in-git/
+
+---
+
+</details>
+
 You should now be able to access http://localhost:2137.
 The page will look more or less like this:
 ![](assets/mlflow_ui.png)
