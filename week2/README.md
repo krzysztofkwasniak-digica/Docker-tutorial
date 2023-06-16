@@ -242,13 +242,14 @@ docker-compose -f docker-compose.train.yml up --build --remove-orphans
 ### Serving
 
 With our current knowledge building and launching the serving container is a matter of seconds.
+We use second yml file that configures serving app to expose the FastAPI service.
 ```sh
-docker-compose -f docker-compose.yml up --build --remove-orphans
+docker-compose -f docker-compose.app.yml up --build --remove-orphans
 ```
 You can also launch it in detached mode and inspect the logs. Most of the commands for compose are similar.
 ```sh
-docker-compose -f docker-compose.yml up -d --build --remove-orphans
-docker-compose -f docker-compose.yml logs
+docker-compose -f docker-compose.app.yml up -d --build --remove-orphans
+docker-compose -f docker-compose.app.yml logs
 ```
 
 Play with your model endpoint and MLflow server. You have done it!
